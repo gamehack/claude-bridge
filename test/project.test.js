@@ -18,4 +18,5 @@ test("systemd template uses ubuntu, Node 24, no port, and an existing environmen
   assert.match(unit, /\/opt\/nodejs-v24\.21\.0\/bin\/node/);
   assert.match(unit, /EnvironmentFile=\/etc\/kilo-bridge\/bridge\.env/);
   assert.doesNotMatch(unit, /ListenStream|Environment=SUPABASE_SERVICE_ROLE_KEY/);
+  assert.doesNotMatch(unit, /ProtectSystem|ProtectHome|ReadWritePaths|PrivateDevices/);
 });

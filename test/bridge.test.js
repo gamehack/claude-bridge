@@ -112,9 +112,9 @@ test("interrupt aborts and closes the real live SDK query", async () => {
   const claude = { startTurn(params) {
     return iterable(async function* () {
       yield { type: "system", subtype: "init", session_id: "interrupt-session", model: "model" };
-      await new Promise((_, reject) => params.abortController.signal.addEventListener("abort", () => {
-        const error = new Error("aborted"); error.name = "AbortError"; reject(error);
-      }, { once: true }));
+      await params.canUseTool("Bash", { command: "sleep 30" }, {
+        signal: params.abortController.signal, requestId: "interrupt-request", toolUseID: "interrupt-tool"
+      });
     }, () => { closed = true; });
   } };
   const bridge = new Bridge(config, store, claude, logger);
@@ -122,7 +122,7 @@ test("interrupt aborts and closes the real live SDK query", async () => {
   const turn = { id: randomUUID(), command_type: "start_turn", session_id: session.id, payload: { text: "wait" } };
   store.commands.set(turn.id, turn);
   await bridge.startTurn(turn, { text: "wait" });
-  await eventually(() => store.sessions.get(session.id).claude_session_id === "interrupt-session", "SDK init");
+  await eventually(() => store.approvals.size === 1, "pending SDK approval");
 
   const interrupt = { id: randomUUID(), command_type: "interrupt_turn", session_id: session.id, payload: {} };
   store.commands.set(interrupt.id, interrupt);
@@ -130,4 +130,5 @@ test("interrupt aborts and closes the real live SDK query", async () => {
   assert.equal(closed, true);
   assert.equal(store.commands.get(turn.id).status, "cancelled");
   assert.equal(store.commands.get(interrupt.id).status, "succeeded");
+  assert.equal([...store.approvals.values()][0].status, "orphaned");
 });

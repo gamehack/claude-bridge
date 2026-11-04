@@ -46,7 +46,7 @@ returning id,status;
 
 The first turn persists `claude_sessions.claude_session_id`. Every later turn supplies that value to
 the SDK `resume` option. A completed command stores `final_message`, model, usage, model usage, cost,
-duration, stop reason, and the number of omitted stream delta events in `result`.
+duration, stop reason, and counts for omitted stream delta/system events in `result`.
 
 Use a new idempotency UUID and the same bridge session UUID for the next message:
 

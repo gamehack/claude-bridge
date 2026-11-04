@@ -17,7 +17,8 @@ explicit decision. An interrupt aborts and closes the live SDK query.
 - Commands require a unique UUID idempotency key and are claimed atomically with a lease.
 - Realtime is only a wake-up hint; a 15-second poll is the recovery path.
 - A crash after dispatch produces `needs_reconciliation`. External work is never auto-replayed.
-- SDK token deltas are counted but not stored. Persisted events and errors are sanitized and bounded.
+- SDK token deltas and auxiliary system notifications are counted but not stored. Persisted init,
+  assistant, result, lifecycle, and error events are sanitized and bounded.
 - The bridge never changes the configured provider, model, credentials, or Claude user settings.
 
 ## Requirements

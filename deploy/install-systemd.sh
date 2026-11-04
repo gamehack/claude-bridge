@@ -21,13 +21,13 @@ if [[ ! -f "$APP_DIR/src/index.js" || ! -f "$APP_DIR/node_modules/@anthropic-ai/
   echo "Install the application and npm dependencies in $APP_DIR first" >&2
   exit 1
 fi
-if [[ ! -r "$ENV_FILE" ]]; then
+if ! sudo test -r "$ENV_FILE"; then
   echo "Existing server-side EnvironmentFile is not readable: $ENV_FILE" >&2
   exit 1
 fi
 
 # Validate by name without printing values. systemd reads the existing root-owned file.
-if ! grep -q '^SUPABASE_URL=' "$ENV_FILE" || ! grep -q '^SUPABASE_SERVICE_ROLE_KEY=' "$ENV_FILE"; then
+if ! sudo grep -q '^SUPABASE_URL=' "$ENV_FILE" || ! sudo grep -q '^SUPABASE_SERVICE_ROLE_KEY=' "$ENV_FILE"; then
   echo "EnvironmentFile lacks required Supabase server-side variables" >&2
   exit 1
 fi

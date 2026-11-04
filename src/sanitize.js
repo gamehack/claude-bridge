@@ -1,4 +1,9 @@
-const SECRET_KEY = /(?:authorization|cookie|password|passwd|secret|token|api[_-]?key|service[_-]?role)/i;
+function isSecretKey(key) {
+  const normalized = String(key).replace(/[^a-z0-9]/gi, "").toLowerCase();
+  return ["authorization", "cookie", "password", "passwd", "secret", "token", "apikey",
+    "servicerolekey", "accesstoken", "refreshtoken", "authtoken"]
+    .some((suffix) => normalized === suffix || normalized.endsWith(suffix));
+}
 const SECRET_TEXT = [
   /\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/-]+=*/gi,
   /\b(sk|key|token|secret)[-_][A-Za-z0-9_-]{12,}\b/gi,
@@ -26,7 +31,7 @@ export function sanitize(value, { maxString = 12000, knownSecrets = [], depth = 
   if (typeof value === "object") {
     const output = {};
     for (const [key, item] of Object.entries(value).slice(0, 100)) {
-      output[key] = SECRET_KEY.test(key) ? "[REDACTED]" : sanitize(item,
+      output[key] = isSecretKey(key) ? "[REDACTED]" : sanitize(item,
         { maxString, knownSecrets, depth: depth + 1 });
     }
     return output;

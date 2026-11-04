@@ -112,7 +112,7 @@ export class Bridge {
 
     const abortController = new AbortController();
     const active = { session, command, abortController, query: null, approvals: new Map(),
-      cancelReason: null, task: null, streamEvents: 0, storedEvents: 0 };
+      cancelReason: null, task: null, streamEvents: 0, systemEvents: 0, storedEvents: 0 };
     this.active.set(session.id, active);
     active.task = this.runTurn(active, text);
     void active.task.catch((error) => this.logger.error("turn.unhandled", { session_id: session.id,
@@ -141,7 +141,11 @@ export class Bridge {
             summarizeSdkMessage(message, this.config.maxEventChars));
           continue;
         }
-        if (["system", "assistant", "result"].includes(message?.type) && active.storedEvents < 200) {
+        if (message?.type === "system" && message.subtype !== "init") {
+          active.systemEvents++;
+          continue;
+        }
+        if (["system", "assistant", "result"].includes(message?.type) && active.storedEvents < 50) {
           active.storedEvents++;
           await this.event(command, `sdk.${message.type}`,
             summarizeSdkMessage(message, this.config.maxEventChars));
@@ -161,7 +165,8 @@ export class Bridge {
         duration_ms: sdkResult.duration_ms ?? null,
         num_turns: sdkResult.num_turns ?? null,
         stop_reason: sdkResult.stop_reason || null,
-        stream_event_count: active.streamEvents
+        stream_event_count: active.streamEvents,
+        omitted_system_event_count: active.systemEvents
       }, { maxString: 50000, knownSecrets: [this.config.supabaseServiceRoleKey] });
       await this.store.updateCommand(command.id, { status: failed ? "failed" : "succeeded", result,
         error: failed ? sanitize({ name: "ClaudeResultError", errors: sdkResult.errors || [],
@@ -169,7 +174,8 @@ export class Bridge {
         finished_at: now(), lease_expires_at: null });
       await this.store.updateSession(session.id, { status: failed ? "error" : "ready", model,
         current_command_id: null, last_turn_status: failed ? "failed" : "succeeded" });
-      await this.event(command, "turn.completed", { failed, model, stream_event_count: active.streamEvents });
+      await this.event(command, "turn.completed", { failed, model, stream_event_count: active.streamEvents,
+        omitted_system_event_count: active.systemEvents });
     } catch (error) {
       const operatorCancelled = active.cancelReason === "operator";
       const status = operatorCancelled ? "cancelled" : "needs_reconciliation";
@@ -210,7 +216,6 @@ export class Bridge {
 
     return await new Promise((resolve) => {
       const onAbort = () => {
-        active.approvals.delete(approval.id);
         resolve({ behavior: "deny", message: "Claude turn interrupted", interrupt: true,
           toolUseID: options.toolUseID });
       };
