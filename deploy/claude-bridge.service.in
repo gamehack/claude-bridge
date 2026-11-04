@@ -1,0 +1,33 @@
+[Unit]
+Description=Claude Bridge
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/claude-bridge
+EnvironmentFile=/etc/kilo-bridge/bridge.env
+Environment=NODE_ENV=production
+Environment=HOME=/home/ubuntu
+Environment=PATH=/opt/nodejs-v24.21.0/bin:/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/opt/nodejs-v24.21.0/bin/node /opt/claude-bridge/src/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

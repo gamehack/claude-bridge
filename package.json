@@ -1,0 +1,18 @@
+{
+  "name": "@gamehack/claude-bridge",
+  "version": "0.1.0",
+  "description": "Durable Supabase command bridge for the Claude Agent SDK",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node --check src/index.js && node --check src/bridge.js && node --check src/claude-client.js && node --check src/store.js && node --check src/config.js",
+    "test": "node --test",
+    "diagnose": "node src/cli-diagnostic.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.318",
+    "@supabase/supabase-js": "2.57.4"
+  },
+  "license": "MIT"
+}
