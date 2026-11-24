@@ -12,7 +12,8 @@ values ('PUT-NEW-UUID-HERE','health_check','{}'::jsonb)
 returning id,status;
 ~~~
 
-The terminal result includes the installed CLI version and active SDK turn count, never credentials.
+The terminal result includes the installed CLI version, configured permission mode and approval
+policy, and active SDK turn count, never credentials. Check `sdk.system` init events for the actual SDK mode.
 
 ## Create a session
 
@@ -82,7 +83,13 @@ Raw token deltas are intentionally not persisted. Do not retry `running`, `await
 
 ## Tool approvals
 
-The SDK callback stays blocked without a deadline. A timeout or absent operator never approves.
+The public default is manual. On the trusted unattended host, set
+`CLAUDE_PERMISSION_MODE=bypassPermissions` and `BRIDGE_APPROVAL_POLICY=always`.
+The SDK handles ordinary grants first; remaining ordinary callbacks are audited as approved/always
+with `detail.decision_source=bridge_auto` before returning to the SDK, without changing the
+turn to awaiting_approval. Actual clarification questions are denied with an instruction to ask
+in the final response. Explicit SDK safety/organization confirmation stays pending for review.
+No timeout or absent operator approves a manual request.
 
 ~~~sql
 select id,session_id,command_id,tool_name,detail,status,created_at
@@ -91,7 +98,9 @@ where status='pending'
 order by created_at;
 ~~~
 
-After reviewing `detail`, submit `once`, `always`, or `reject`:
+For any remaining ordinary permission request within the authorized task, the ChatGPT operator
+uses `always`. Do not treat actual user input, explicit safety boundaries, or requests outside
+the authorized task as ordinary approvals. The legacy `once`, `always`, and `reject` protocol remains:
 
 ~~~sql
 insert into coord.claude_commands (idempotency_key,command_type,session_id,payload)
@@ -99,7 +108,7 @@ values (
   'PUT-NEW-UUID-HERE',
   'approval_decision',
   'PUT-SESSION-UUID-HERE',
-  jsonb_build_object('approval_id','PUT-APPROVAL-UUID-HERE','decision','once')
+  jsonb_build_object('approval_id','PUT-APPROVAL-UUID-HERE','decision','always')
 )
 returning id,status;
 ~~~

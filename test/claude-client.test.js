@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ClaudeClient, summarizeSdkMessage } from "../src/claude-client.js";
+import { ClaudeClient, summarizeSdkMessage, claudeEnvironment } from "../src/claude-client.js";
 
 test("SDK query uses cwd, resume, default permissions, callback, and configured CLI", () => {
   let captured;
@@ -25,4 +25,21 @@ test("result summaries retain bounded result and usage", () => {
   assert.equal(summary.result, "abc");
   assert.equal(summary.result_truncated, true);
   assert.equal(summary.usage.input_tokens, 1);
+});
+
+test("explicit bypass mode passes the required SDK opt-in", () => {
+  let captured;
+  const client = new ClaudeClient({ claudeExecutable: "/bin/true", permissionMode: "bypassPermissions" },
+    { query: (params) => { captured = params; return {}; } });
+  client.startTurn({ text: "test", directory: "/tmp", abortController: new AbortController() });
+  assert.equal(captured.options.permissionMode, "bypassPermissions");
+  assert.equal(captured.options.allowDangerouslySkipPermissions, true);
+});
+
+test("child environment does not inherit the bridge database secret or its alias", () => {
+  const env = claudeEnvironment({ supabaseServiceRoleKey: "test-secret" }, {
+    SUPABASE_SERVICE_ROLE_KEY: "test-secret", SUPABASE_SECRET_KEY: "other-secret",
+    OTHER_ALIAS: "test-secret", ANTHROPIC_API_KEY: "provider-key", PATH: "/bin"
+  });
+  assert.deepEqual(env, { ANTHROPIC_API_KEY: "provider-key", PATH: "/bin" });
 });

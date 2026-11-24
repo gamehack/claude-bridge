@@ -11,6 +11,12 @@ function positiveInt(value, fallback, name, { min = 1, max = Number.MAX_SAFE_INT
   return number;
 }
 
+function enumValue(value, fallback, name, choices) {
+  const result = value === undefined ? fallback : value;
+  if (!choices.includes(result)) throw new Error(`${name} must be one of: ${choices.join(", ")}`);
+  return result;
+}
+
 export function loadConfig(env = process.env, { checkExecutable = true } = {}) {
   const url = new URL(env.SUPABASE_URL || "https://example.supabase.co");
   if (url.protocol !== "https:") throw new Error("SUPABASE_URL must use HTTPS");
@@ -36,6 +42,10 @@ export function loadConfig(env = process.env, { checkExecutable = true } = {}) {
     pollIntervalMs: positiveInt(env.BRIDGE_POLL_INTERVAL_MS, 15000, "BRIDGE_POLL_INTERVAL_MS", { min: 1000, max: 300000 }),
     claimLeaseSeconds: positiveInt(env.BRIDGE_CLAIM_LEASE_SECONDS, 60, "BRIDGE_CLAIM_LEASE_SECONDS", { min: 15, max: 300 }),
     maxEventChars: positiveInt(env.BRIDGE_MAX_EVENT_CHARS, 12000, "BRIDGE_MAX_EVENT_CHARS", { min: 1000, max: 50000 }),
+    permissionMode: enumValue(env.CLAUDE_PERMISSION_MODE, "default", "CLAUDE_PERMISSION_MODE",
+      ["default", "bypassPermissions"]),
+    approvalPolicy: enumValue(env.BRIDGE_APPROVAL_POLICY, "manual", "BRIDGE_APPROVAL_POLICY",
+      ["manual", "always"]),
     logLevel: env.LOG_LEVEL || "info"
   };
 }

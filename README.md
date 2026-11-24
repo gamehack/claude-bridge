@@ -7,8 +7,9 @@ changes to Codex Bridge or Kilo Bridge.
 
 The worker consumes `create_session`, `start_turn`, `interrupt_turn`, `approval_decision`, and
 `health_check`. Claude's SDK session ID is persisted and passed back through `resume` for genuine
-multi-turn conversations. Tool permission requests block in `canUseTool` until a human submits an
-explicit decision. An interrupt aborts and closes the live SDK query.
+multi-turn conversations. Tool permission requests use `canUseTool`. By default they block until an explicit decision.
+Trusted-host operators may opt into SDK bypass mode and automatic approval of ordinary tool requests;
+the existing approval audit and interrupt protocol remain intact. An interrupt aborts and closes the live SDK query.
 
 ## Safety and durability
 
@@ -19,7 +20,12 @@ explicit decision. An interrupt aborts and closes the live SDK query.
 - A crash after dispatch produces `needs_reconciliation`. External work is never auto-replayed.
 - SDK token deltas and auxiliary system notifications are counted but not stored. Persisted init,
   assistant, result, lifecycle, and error events are sanitized and bounded.
-- The bridge never changes the configured provider, model, credentials, or Claude user settings.
+- The bridge does not change the configured provider or model. SDK-suggested permission updates
+  are applied on `always` decisions. Control-plane secrets are excluded from child environments;
+  this does not isolate same-UID or privileged processes.
+- Unattended mode is opt-in: `CLAUDE_PERMISSION_MODE=bypassPermissions` and
+  `BRIDGE_APPROVAL_POLICY=always`. Use only for trusted tasks on a controlled host.
+  Explicit SDK safety/organization confirmation, and actual user-input questions, are not ordinary grants.
 
 ## Requirements
 

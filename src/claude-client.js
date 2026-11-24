@@ -1,6 +1,14 @@
 import { spawn } from "node:child_process";
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 
+// Keep provider/model configuration while withholding the control-plane secret from children.
+// This is environment hygiene, not an OS isolation boundary between processes of the same uid.
+export function claudeEnvironment(config, env = process.env) {
+  return Object.fromEntries(Object.entries(env).filter(([key, value]) =>
+    !["SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_SECRET_KEY"].includes(key) &&
+    !(config.supabaseServiceRoleKey && value === config.supabaseServiceRoleKey)));
+}
+
 export class ClaudeClient {
   constructor(config, { query = sdkQuery } = {}) {
     this.config = config;
@@ -15,10 +23,12 @@ export class ClaudeClient {
         ...(resume ? { resume } : {}),
         abortController,
         canUseTool,
-        permissionMode: "default",
+        permissionMode: this.config.permissionMode || "default",
+        ...(this.config.permissionMode === "bypassPermissions"
+          ? { allowDangerouslySkipPermissions: true } : {}),
         includePartialMessages: true,
         pathToClaudeCodeExecutable: this.config.claudeExecutable,
-        env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: "gamehack-claude-bridge/0.1.0" }
+        env: { ...claudeEnvironment(this.config), CLAUDE_AGENT_SDK_CLIENT_APP: "gamehack-claude-bridge/0.1.0" }
       }
     });
   }
@@ -26,7 +36,7 @@ export class ClaudeClient {
   async health() {
     const version = await new Promise((resolve, reject) => {
       const child = spawn(this.config.claudeExecutable, ["--version"], {
-        stdio: ["ignore", "pipe", "pipe"], env: process.env
+        stdio: ["ignore", "pipe", "pipe"], env: claudeEnvironment(this.config)
       });
       let stdout = "";
       let stderr = "";

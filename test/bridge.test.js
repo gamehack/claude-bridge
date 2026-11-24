@@ -132,3 +132,61 @@ test("interrupt aborts and closes the real live SDK query", async () => {
   assert.equal(store.commands.get(interrupt.id).status, "succeeded");
   assert.equal([...store.approvals.values()][0].status, "orphaned");
 });
+
+function approvalFixture(overrides = {}) {
+  const store = new MemoryStore();
+  const bridge = new Bridge({ ...config, approvalPolicy: "always" }, store, {}, logger);
+  const abortController = new AbortController();
+  const active = { session: { id: randomUUID() }, command: { id: randomUUID() }, abortController,
+    approvals: new Map() };
+  const options = { signal: abortController.signal, requestId: randomUUID(), toolUseID: randomUUID(),
+    suggestions: [{ type: "addRules", rules: [], behavior: "allow", destination: "session" }], ...overrides };
+  return { store, bridge, active, options };
+}
+
+test("always auto-approves a callback, audits the decision and never waits", async () => {
+  const { store, bridge, active, options } = approvalFixture();
+  const input = { command: "touch /tmp/claude-bridge-test" };
+  const result = await bridge.requestApproval(active, "Bash", input, options);
+  assert.deepEqual(result, { behavior: "allow", updatedInput: input,
+    updatedPermissions: options.suggestions, toolUseID: options.toolUseID });
+  const row = [...store.approvals.values()][0];
+  assert.equal(row.status, "approved");
+  assert.equal(row.decision, "always");
+  assert.equal(row.detail.decision_source, "bridge_auto");
+  assert.equal(active.approvals.size, 0);
+  assert.equal(store.events[0].payload.source, "bridge_auto");
+  assert.equal(store.commands.size, 0);
+});
+
+test("always does not fabricate answers to AskUserQuestion", async () => {
+  const { store, bridge, active, options } = approvalFixture();
+  const result = await bridge.requestApproval(active, "AskUserQuestion", { questions: [] }, options);
+  assert.equal(result.behavior, "deny");
+  assert.equal([...store.approvals.values()][0].decision, "reject");
+});
+
+test("auto approval fails closed after an interrupt during audit", async () => {
+  const { store, bridge, active, options } = approvalFixture();
+  const event = store.event.bind(store);
+  store.event = async (data) => { await event(data); active.abortController.abort(); };
+  const result = await bridge.requestApproval(active, "Bash", { command: "true" }, options);
+  assert.equal(result.behavior, "deny");
+  assert.equal(result.interrupt, true);
+  assert.equal([...store.approvals.values()][0].status, "orphaned");
+});
+
+test("auto approval does not allow a tool if audit storage fails", async () => {
+  const { store, bridge, active, options } = approvalFixture();
+  store.createApproval = async () => { throw new Error("audit unavailable"); };
+  await assert.rejects(bridge.requestApproval(active, "Bash", { command: "true" }, options), /audit unavailable/);
+});
+
+test("explicit SDK confirmation is not treated as an ordinary auto grant", async () => {
+  const { store, bridge, active, options } = approvalFixture({ defaultToNo: true });
+  const promise = bridge.requestApproval(active, "Bash", { command: "true" }, options);
+  await eventually(() => active.approvals.size === 1, "explicit pending approval");
+  active.abortController.abort();
+  assert.equal((await promise).behavior, "deny");
+  assert.equal([...store.approvals.values()][0].status, "pending");
+});
