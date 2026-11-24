@@ -26,7 +26,8 @@ export class Bridge {
     this.timer = setInterval(() => this.wake(), this.config.pollIntervalMs);
     this.wake();
     this.logger.info("bridge.started", { bridge_id: this.config.bridgeId,
-      default_directory: this.config.defaultDirectory, sdk_primary: true });
+      default_directory: this.config.defaultDirectory, sdk_primary: true,
+      permission_mode: this.config.permissionMode || "default", approval_policy: this.config.approvalPolicy || "manual" });
   }
 
   async stop() {
@@ -206,6 +207,44 @@ export class Bridge {
       suggestions: options.suggestions, default_to_no: options.defaultToNo,
       suppress_always_allow_rule: options.suppressAlwaysAllowRule },
     { maxString: this.config.maxEventChars, knownSecrets: [this.config.supabaseServiceRoleKey] });
+    // A genuine question must be answered by an operator, not fabricated as a permission grant.
+    // Preserve explicit SDK/organization confirmation boundaries rather than treating them as ordinary grants.
+    const reason = JSON.stringify(options.decisionReason || "");
+    const requiresInput = toolName === "AskUserQuestion" || toolName === "ExitPlanMode" ||
+      /requires (?:user interaction|approval for this tool)|critical path|dangerous rm/i.test(reason) ||
+      options.defaultToNo === true || options.suppressAlwaysAllowRule === true;
+    if (this.config.approvalPolicy === "always" && !requiresInput) {
+      const cancelled = () => options.signal.aborted || active.abortController.signal.aborted;
+      const interrupted = () => ({ behavior: "deny", message: "Claude turn interrupted",
+        interrupt: true, toolUseID: options.toolUseID });
+      if (cancelled()) return interrupted();
+      const approval = await this.store.createApproval({ session_id: active.session.id,
+        command_id: active.command.id, sdk_request_id: options.requestId,
+        tool_use_id: options.toolUseID, tool_name: toolName,
+        detail: { ...detail, decision_source: "bridge_auto" }, status: "approved",
+        decision: "always", resolved_at: now() });
+      await this.event(active.command, "approval.resolved", {
+        approval_id: approval.id, tool_name: toolName, decision: "always", source: "bridge_auto"
+      });
+      if (cancelled()) {
+        await this.store.updateApproval(approval.id, { status: "orphaned", resolved_at: now() });
+        await this.event(active.command, "approval.cancelled", { approval_id: approval.id });
+        return interrupted();
+      }
+      return { behavior: "allow", updatedInput: input,
+        ...(options.suggestions?.length ? { updatedPermissions: options.suggestions } : {}),
+        toolUseID: options.toolUseID };
+    }
+    if (toolName === "AskUserQuestion") {
+      const approval = await this.store.createApproval({ session_id: active.session.id,
+        command_id: active.command.id, sdk_request_id: options.requestId,
+        tool_use_id: options.toolUseID, tool_name: toolName,
+        detail: { ...detail, decision_source: "requires_user_input" }, status: "rejected",
+        decision: "reject", resolved_at: now() });
+      await this.event(active.command, "approval.resolved", { approval_id: approval.id,
+        tool_name: toolName, decision: "reject", source: "requires_user_input" });
+      return { behavior: "deny", message: "Do not assume answers. State your clarification question in the final response so the operator can answer in the next turn.", toolUseID: options.toolUseID };
+    }
     const approval = await this.store.createApproval({ session_id: active.session.id,
       command_id: active.command.id, sdk_request_id: options.requestId,
       tool_use_id: options.toolUseID, tool_name: toolName, detail, status: "pending" });
@@ -269,7 +308,9 @@ export class Bridge {
 
   async healthCheck(command) {
     const health = await this.claude.health();
-    await this.finish(command, "succeeded", { ...health, active_turns: this.active.size });
+    await this.finish(command, "succeeded", { ...health, active_turns: this.active.size,
+      permission_mode: this.config.permissionMode || "default",
+      approval_policy: this.config.approvalPolicy || "manual" });
   }
 
   async finish(command, status, result) {

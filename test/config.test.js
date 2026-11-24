@@ -9,6 +9,8 @@ test("loads Node worker settings", () => {
   const config = loadConfig(env());
   assert.equal(config.defaultDirectory, "/home/ubuntu");
   assert.equal(config.pollIntervalMs, 15000);
+  assert.equal(config.permissionMode, "default");
+  assert.equal(config.approvalPolicy, "manual");
 });
 
 test("rejects insecure Supabase URLs", () => {
@@ -18,4 +20,12 @@ test("rejects insecure Supabase URLs", () => {
 test("rejects relative executable and cwd paths", () => {
   assert.throws(() => loadConfig(env({ CLAUDE_EXECUTABLE: "claude" }), { checkExecutable: false }), /absolute/);
   assert.throws(() => loadConfig(env({ CLAUDE_DEFAULT_DIRECTORY: "project" })), /absolute/);
+});
+
+test("explicit unattended mode and policy are validated", () => {
+  const config = loadConfig(env({ CLAUDE_PERMISSION_MODE: "bypassPermissions", BRIDGE_APPROVAL_POLICY: "always" }));
+  assert.equal(config.permissionMode, "bypassPermissions");
+  assert.equal(config.approvalPolicy, "always");
+  assert.throws(() => loadConfig(env({ CLAUDE_PERMISSION_MODE: "typo" })), /CLAUDE_PERMISSION_MODE/);
+  assert.throws(() => loadConfig(env({ BRIDGE_APPROVAL_POLICY: "typo" })), /BRIDGE_APPROVAL_POLICY/);
 });
